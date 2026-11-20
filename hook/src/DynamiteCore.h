@@ -8,6 +8,9 @@
 #include "Tpp/TppNPCLifeState.h"
 #include "Tpp/TppTypes.h"
 
+#include <atomic>
+#include <chrono>
+#include <filesystem>
 #include <thread>
 
 namespace Dynamite {
@@ -29,6 +32,8 @@ namespace Dynamite {
         void StartNearestEnemyThread();
         void StopNearestEnemyThread();
         bool IsNearestEnemyThreadRunning() const;
+        // call every frame from the game (Lua) thread, recalculates target player every 500ms while enabled
+        void UpdateNearestEnemy();
         unsigned int GetOffensePlayerID() const;
         unsigned int GetDefensePlayerID() const;
         void ResetState();
@@ -51,10 +56,13 @@ namespace Dynamite {
         bool sessionConnected = false;
         bool emblemCreated = false;
         bool hostSessionCreated = false;
-        unsigned int offensePlayerID = 0;
+        std::atomic<unsigned int> offensePlayerID = 0;
         unsigned int defensePlayerID = 15;
         Config *cfg = nullptr;
-        std::jthread nearestPlayerThread;
+        // nearest player targeting used to run on its own thread and call game functions from there,
+        // now it is driven from the game's Lua update (UpdateNearestEnemy)
+        std::atomic<bool> nearestEnemyEnabled = false;
+        std::chrono::steady_clock::time_point nextNearestEnemyUpdate{};
         uint32_t missionsCompleted = 0;
         std::filesystem::path missionsFilename = std::filesystem::path("dynamite") / std::filesystem::path("missions.txt");
     };

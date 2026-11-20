@@ -124,7 +124,9 @@ namespace Dynamite {
             }
         }
 
+        spdlog::info("{}: Connection accepted (not in blacklist)", __PRETTY_FUNCTION__);
         SteamUdpSocketImplOnP2PSessionRequest(thisPtr, request);
+        g_hook->dynamiteSyncImpl.packetSeen = 0;
     }
 
     void SetSteamIdHook(void *param, uint64_t *steamID) {

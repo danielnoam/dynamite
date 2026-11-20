@@ -149,6 +149,13 @@ namespace Dynamite {
         return 0;
     }
 
+    // TppPlayer.Update, called every frame; does the work of the old nearest enemy thread on the game thread
+    int l_UpdateNearestEnemy(lua_State *L) {
+        g_hook->dynamiteCore.UpdateNearestEnemy();
+
+        return 0;
+    }
+
     // not used in lua, but exposed just in case
     int l_IsNearestEnemyThreadRunning(lua_State *L) {
         lua_pushboolean(L, g_hook->dynamiteCore.IsNearestEnemyThreadRunning());
@@ -467,6 +474,7 @@ namespace Dynamite {
             {"StartNearestEnemyThread", l_StartNearestEnemyThread},
             {"StopNearestEnemyThread", l_StopNearestEnemyThread},
             {"IsNearestEnemyThreadRunning", l_IsNearestEnemyThreadRunning},
+            {"UpdateNearestEnemy", l_UpdateNearestEnemy},
             {"GetOffensePlayerIndex", l_GetOffensePlayerIndex},
             {"GetDefensePlayerIndex", l_GetDefensePlayerIndex},
             {"GetSoldierLifeStatus", l_GetSoldierLifeStatus},

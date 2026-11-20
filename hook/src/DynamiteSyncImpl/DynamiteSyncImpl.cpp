@@ -140,22 +140,22 @@ namespace Dynamite {
 
     void DynamiteSyncImpl::Ping() {
         spdlog::info("{}", __PRETTY_FUNCTION__);
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(512);
         const auto sv = DynamiteMessage::CreatePing(builder, 1);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_Ping, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_Ping, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
     }
 
     void DynamiteSyncImpl::RequestVar(const std::string &catName, const std::string &varName) {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(512);
         const flatbuffers::Offset<flatbuffers::String> category = builder.CreateString(catName);
         const flatbuffers::Offset<flatbuffers::String> name = builder.CreateString(varName);
         const auto sv = DynamiteMessage::CreateRequestVar(builder, category, name);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_RequestVar, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_RequestVar, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, request for {}.{}, res {}", __PRETTY_FUNCTION__, catName, varName, res);
@@ -163,7 +163,12 @@ namespace Dynamite {
 
     void DynamiteSyncImpl::HandleRequestVar(const DynamiteMessage::MessageWrapper *w) {
         const auto m = w->msg_as_RequestVar();
-        SyncVar(m->category()->c_str(), m->name()->c_str());
+        if (m == nullptr || m->category() == nullptr || m->name() == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
+        SyncVar(m->category()->str(), m->name()->str());
     }
 
     void DynamiteSyncImpl::HandleAddFixedUserMarker(const DynamiteMessage::MessageWrapper *w) {
@@ -173,6 +178,11 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_AddFixedUserMarker();
+        if (m == nullptr || m->pos() == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         const auto pos = m->pos();
         spdlog::info("{}: x: {:f}, y: {:f}, z: {:f}", __PRETTY_FUNCTION__, pos->x(), pos->y(), pos->z());
         auto vv = Vector3{
@@ -185,11 +195,11 @@ namespace Dynamite {
     }
 
     void DynamiteSyncImpl::AddFollowUserMarker(const Vector3 *pos, const uint32_t objectID) {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128);
         const auto p = DynamiteMessage::Vec3(pos->x, pos->y, pos->z);
         const auto sv = DynamiteMessage::CreateAddFollowUserMarker(builder, &p, objectID);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_AddFollowUserMarker, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_AddFollowUserMarker, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, res);
@@ -203,6 +213,11 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_AddFollowUserMarker();
+        if (m == nullptr || m->pos() == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         auto vv = Vector3{
             .x = m->pos()->x(),
             .y = m->pos()->y(),
@@ -215,10 +230,10 @@ namespace Dynamite {
     }
 
     void DynamiteSyncImpl::RemoveUserMarker(const uint32_t markerID) {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128);
         const auto sv = DynamiteMessage::CreateRemoveUserMarker(builder, markerID);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_RemoveUserMarker, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_RemoveUserMarker, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, res);
@@ -232,15 +247,20 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_RemoveUserMarker();
+        if (m == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         spdlog::info("{}, id {}", __PRETTY_FUNCTION__, m->marker_id());
         Marker2SystemImplRemovedUserMarker(hookState.markerSystemImpl, m->marker_id());
     }
 
     void DynamiteSyncImpl::SetSightMarker(const uint32_t objectID, const uint32_t duration) {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128);
         const auto sv = DynamiteMessage::CreateSetSightMarker(builder, objectID, duration);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SetSightMarker, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SetSightMarker, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, res);
@@ -254,13 +274,18 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SetSightMarker();
+        if (m == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         spdlog::info("{}, objectID {}, duration {}", __PRETTY_FUNCTION__, m->object_id(), m->duration());
         auto ok = SightManagerImplSetMarker(hookState.sightManagerImpl, m->object_id(), m->duration());
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, ok);
     }
 
     void DynamiteSyncImpl::SendEmblem() {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(256);
 
         const auto info = g_hook->dynamiteCore.GetEmblemInfo();
@@ -276,7 +301,7 @@ namespace Dynamite {
         };
 
         const auto sv = DynamiteMessage::CreateSendEmblem(builder, &emblem_info);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendEmblem, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendEmblem, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, res);
@@ -284,6 +309,11 @@ namespace Dynamite {
 
     void DynamiteSyncImpl::HandleSendEmblem(const DynamiteMessage::MessageWrapper *w) {
         const auto m = w->msg_as_SendEmblem();
+        if (m == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         const auto info = m->emblem_info();
         if (info == nullptr) {
             spdlog::error("{}, emblem info is nullptr", __PRETTY_FUNCTION__);
@@ -320,22 +350,28 @@ namespace Dynamite {
         const auto v1 = *(uint64_t *)((char *)qt + 0x98);
         const auto scriptSystemImpl = *(void **)(v1 + 0x18);
 
-        auto handle = BlockHeapAlloc(8, 8, MEMTAG_TPP_SYSTEM2SCRIPT);
-        TppGmImplScriptSystemImplGetScriptDeclVarHandle(scriptSystemImpl, handle, catHash, hash);
+        // handle is read up to +0xC below, allocate the whole 16 bytes and zero them,
+        // so an unknown var reads as size 0 instead of heap garbage
+        auto handle = BlockHeapAlloc(16, 8, MEMTAG_TPP_SYSTEM2SCRIPT);
         if (handle == nullptr) {
-            spdlog::error("{}, no handle for var {}.{}", __PRETTY_FUNCTION__, catName, varName);
+            spdlog::error("{}, alloc failed for var {}.{}", __PRETTY_FUNCTION__, catName, varName);
             return;
         }
+
+        memset(handle, 0, 16);
+        TppGmImplScriptSystemImplGetScriptDeclVarHandle(scriptSystemImpl, handle, catHash, hash);
 
         auto varType = *(unsigned char *)((char *)handle + 0xC) & 7;
         if (varType > TYPE_MAX) {
             spdlog::error("{}, invalid var type {}.{} {}", __PRETTY_FUNCTION__, catName, varName, varType);
+            BlockHeapFree(handle);
             return;
         }
 
         auto arraySize = *(unsigned short *)((char *)handle + 0x8);
         if (arraySize == 0) {
             spdlog::error("{}, invalid var size {}.{}: {}", __PRETTY_FUNCTION__, catName, varName, arraySize);
+            BlockHeapFree(handle);
             return;
         }
 
@@ -383,6 +419,7 @@ namespace Dynamite {
 
         if (valType == DynamiteMessage::ArrayValues_NONE) {
             spdlog::error("{}, valType is NONE", __PRETTY_FUNCTION__);
+            BlockHeapFree(handle);
             return;
         }
 
@@ -554,11 +591,11 @@ namespace Dynamite {
         }
         auto svo = svb.Finish();
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         DynamiteMessage::MessageWrapperBuilder mwb(builder);
         mwb.add_msg_type(DynamiteMessage::Message_SyncVar);
         mwb.add_msg(svo.Union());
-        mwb.add_packet_num(packetNumber);
+        mwb.add_packet_num(pn);
 
         auto mo = mwb.Finish();
         builder.Finish(mo);
@@ -566,8 +603,34 @@ namespace Dynamite {
         spdlog::info("{}: send: {}", __PRETTY_FUNCTION__, res);
     }
 
+    uint32_t DynamiteSyncImpl::GetVarArraySize(const std::string &catName, const std::string &varName) {
+        const auto hash = (uint32_t)(FoxStrHash32(varName.c_str(), varName.length()) & 0xffffffff);
+        const auto catHash = (uint32_t)(FoxStrHash32(catName.c_str(), catName.length()) & 0xffffffff);
+
+        const auto qt = GetQuarkSystemTable();
+        const auto v1 = *(uint64_t *)((char *)qt + 0x98);
+        const auto scriptSystemImpl = *(void **)(v1 + 0x18);
+
+        const auto handle = BlockHeapAlloc(16, 8, MEMTAG_TPP_SYSTEM2SCRIPT);
+        if (handle == nullptr) {
+            return 0;
+        }
+
+        memset(handle, 0, 16);
+        TppGmImplScriptSystemImplGetScriptDeclVarHandle(scriptSystemImpl, handle, catHash, hash);
+        const uint32_t arraySize = *(unsigned short *)((char *)handle + 0x8);
+        BlockHeapFree(handle);
+
+        return arraySize;
+    }
+
     void DynamiteSyncImpl::HandleSyncVar(const DynamiteMessage::MessageWrapper *w) {
         const auto m = w->msg_as_SyncVar();
+        if (m == nullptr || m->category() == nullptr || m->name() == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         spdlog::info("{}: {}.{}, size {}, start {}, type {}",
             __PRETTY_FUNCTION__,
             m->category()->c_str(),
@@ -598,31 +661,38 @@ namespace Dynamite {
             return;
         }
 
+        // the peer decides array_start and the number of values, check them against the local variable
+        const auto arraySize = GetVarArraySize(m->category()->str(), m->name()->str());
+        if (arraySize == 0) {
+            spdlog::error("{}, cannot get array size for {}.{}", __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str());
+            return;
+        }
+
         bool res = false;
         switch (m->array_values_type()) {
         case DynamiteMessage::ArrayValues_Bool:
-            res = SyncBoolVar(m, vars, varIndex);
+            res = SyncBoolVar(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Int32:
-            res = SyncInt32Var(m, vars, varIndex);
+            res = SyncInt32Var(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Uint32:
-            res = SyncUint32Var(m, vars, varIndex);
+            res = SyncUint32Var(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Float:
-            res = SyncFloatVar(m, vars, varIndex);
+            res = SyncFloatVar(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Int8:
-            res = SyncInt8Var(m, vars, varIndex);
+            res = SyncInt8Var(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Uint8:
-            res = SyncUint8Var(m, vars, varIndex);
+            res = SyncUint8Var(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Int16:
-            res = SyncInt16Var(m, vars, varIndex);
+            res = SyncInt16Var(m, vars, varIndex, arraySize);
             break;
         case DynamiteMessage::ArrayValues_Uint16:
-            res = SyncUint16Var(m, vars, varIndex);
+            res = SyncUint16Var(m, vars, varIndex, arraySize);
             break;
         default:
             spdlog::error("{}, unknown array values type", __PRETTY_FUNCTION__);
@@ -632,7 +702,7 @@ namespace Dynamite {
         syncStatus[m->name()->c_str()] = res;
     }
 
-    bool DynamiteSyncImpl::SyncBoolVar(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncBoolVar(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto asBool = m->array_values_as_Bool();
         if (asBool == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -650,6 +720,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -660,7 +736,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncInt32Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncInt32Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto asInt32 = m->array_values_as_Int32();
         if (asInt32 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -678,6 +754,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -688,7 +770,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncUint32Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncUint32Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto as32 = m->array_values_as_Uint32();
         if (as32 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -703,6 +785,12 @@ namespace Dynamite {
 
         if (values->size() < 1) {
             spdlog::error("{}, {}.{} size is 0!", __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str());
+            return false;
+        }
+
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
             return false;
         }
 
@@ -723,7 +811,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncInt16Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncInt16Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto as16 = m->array_values_as_Int16();
         if (as16 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -741,6 +829,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -751,7 +845,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncUint16Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncUint16Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto as16 = m->array_values_as_Uint16();
         if (as16 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -769,6 +863,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -779,7 +879,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncInt8Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncInt8Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto as8 = m->array_values_as_Int8();
         if (as8 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -797,6 +897,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -807,7 +913,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncUint8Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncUint8Var(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto as8 = m->array_values_as_Uint8();
         if (as8 == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -825,6 +931,12 @@ namespace Dynamite {
             return false;
         }
 
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
+            return false;
+        }
+
         spdlog::info("{}, setting {}.{}", __PRETTY_FUNCTION__, m->name()->c_str(), m->category()->c_str());
         for (size_t i = 0; i < values->size(); i++) {
             const auto val = values->Get(i);
@@ -835,7 +947,7 @@ namespace Dynamite {
         return true;
     }
 
-    bool DynamiteSyncImpl::SyncFloatVar(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex) {
+    bool DynamiteSyncImpl::SyncFloatVar(const DynamiteMessage::SyncVar *m, void *vars, const uint32_t varIndex, const uint32_t arraySize) {
         const auto asFloat = m->array_values_as_Float();
         if (asFloat == nullptr) {
             spdlog::error("{}, array values is null", __PRETTY_FUNCTION__);
@@ -850,6 +962,12 @@ namespace Dynamite {
 
         if (values->size() < 1) {
             spdlog::error("{}, {}.{} size is 0!", __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str());
+            return false;
+        }
+
+        if (!ArrayRangeValid(m->array_start(), values->size(), arraySize)) {
+            spdlog::error("{}, {}.{} out of bounds: start {}, count {}, size {}",
+                __PRETTY_FUNCTION__, m->category()->c_str(), m->name()->c_str(), m->array_start(), values->size(), arraySize);
             return false;
         }
 
@@ -875,12 +993,12 @@ namespace Dynamite {
             spdlog::info("{}", __PRETTY_FUNCTION__);
         }
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(256);
         const std::vector<int8_t> vec(std::begin(command->data), std::end(command->data));
         const auto v = builder.CreateVector(vec);
         const auto sv = DynamiteMessage::CreateSendBossQuietActionCommand(builder, p1, v);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendBossQuietActionCommand, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendBossQuietActionCommand, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
@@ -897,6 +1015,11 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SendBossQuietActionCommand();
+        if (m == nullptr || m->action_command() == nullptr || m->action_command()->size() != sizeof(BossQuietActionCommand)) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         const auto command = m->action_command();
         BossQuietActionCommand cmd{};
         memcpy(&cmd, command->data(), sizeof(cmd));
@@ -911,12 +1034,12 @@ namespace Dynamite {
         // always log, never seen this one
         spdlog::info("{}", __PRETTY_FUNCTION__);
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(256);
         const std::vector<uint8_t> vec(std::begin(command->data), std::end(command->data));
         const auto v = builder.CreateVector(vec);
         const auto sv = DynamiteMessage::CreateSendBossQuietExtraActionCommand(builder, p1, v);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendBossQuietExtraActionCommand, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendBossQuietExtraActionCommand, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
@@ -932,6 +1055,11 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SendBossQuietExtraActionCommand();
+        if (m == nullptr || m->action_command() == nullptr || m->action_command()->size() != sizeof(BossQuietActionCommand)) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
+
         const auto command = m->action_command();
         BossQuietActionCommand cmd{};
         memcpy(&cmd, command->data(), sizeof(cmd));
@@ -944,7 +1072,7 @@ namespace Dynamite {
             spdlog::info("{}, task=\n{}\ndump={}", __PRETTY_FUNCTION__, actionTask->ToString(), bytes_to_hex(actionTask, sizeof(BossQuietActionTask)));
         }
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128 * 7);
 
         const auto byte_span = std::as_bytes(std::span{actionTask, 1});
@@ -969,7 +1097,7 @@ namespace Dynamite {
         }
 
         const auto sv = DynamiteMessage::CreateSendBossQuietSetNextActionTask(builder, param_1, tv, at);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendBossQuietSetNextActionTask, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendBossQuietSetNextActionTask, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
@@ -986,6 +1114,10 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SendBossQuietSetNextActionTask();
+        if (m == nullptr || m->action_task() == nullptr || m->action_task()->size() != sizeof(BossQuietActionTask)) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
 
         BossQuietActionTask action_task{};
         memcpy(&action_task, m->action_task()->data(), sizeof(BossQuietActionTask));
@@ -1018,7 +1150,7 @@ namespace Dynamite {
             spdlog::info("{}", __PRETTY_FUNCTION__);
         }
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128 * 7);
 
         const auto byte_span = std::as_bytes(std::span{task, 1});
@@ -1027,7 +1159,7 @@ namespace Dynamite {
         const auto tv = builder.CreateVector(taskVec);
 
         const auto sv = DynamiteMessage::CreateSendBossQuietSetActionTask(builder, param_1, tv);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendBossQuietSetActionTask, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendBossQuietSetActionTask, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
@@ -1044,6 +1176,10 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SendBossQuietSetActionTask();
+        if (m == nullptr || m->task() == nullptr || m->task()->size() != sizeof(BossQuietActionTask)) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
 
         const auto workPtr = (void *)((char *)hookState.bossQuietImplActionController + 0x20 + 0x48);
         BossQuietActionTask task{};
@@ -1059,12 +1195,12 @@ namespace Dynamite {
             spdlog::info("{}", __PRETTY_FUNCTION__);
         }
 
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128);
 
         const auto sv = DynamiteMessage::CreateSendBossQuietDamage(
             builder, damage->entityIndex, damage->currentLife, damage->lifeDamage, damage->currentStamina, damage->staminaDamage);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_SendBossQuietDamage, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_SendBossQuietDamage, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}, res {}", __PRETTY_FUNCTION__, res);
@@ -1076,6 +1212,10 @@ namespace Dynamite {
         }
 
         const auto m = w->msg_as_SendBossQuietDamage();
+        if (m == nullptr) {
+            spdlog::error("{}, malformed message", __PRETTY_FUNCTION__);
+            return;
+        }
 
         hookState.incomingBossQuietDamage.entityIndex = m->entity_index();
         hookState.incomingBossQuietDamage.lifeDamage = m->life_damage();
@@ -1139,24 +1279,24 @@ namespace Dynamite {
 
     void DynamiteSyncImpl::AddFixedUserMarker(const Vector3 *pos) {
         spdlog::info("{}, {} {} {}", __PRETTY_FUNCTION__, pos->x, pos->y, pos->z);
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(256);
 
         DynamiteMessage::Vec3 p(pos->x, pos->y, pos->z);
         auto sv = DynamiteMessage::CreateAddFixedUserMarker(builder, &p);
-        auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_AddFixedUserMarker, sv.Union());
+        auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_AddFixedUserMarker, sv.Union());
         builder.Finish(message);
         auto res = SendRaw(&builder);
         spdlog::info("{}: {}", __PRETTY_FUNCTION__, res);
     }
 
     void DynamiteSyncImpl::SendBodyPosition(const uint32_t objectID, const Vector3 *pos, const float rotY, const bool dropped) {
-        packetNumber++;
+        const uint32_t pn = ++packetNumber;
         flatbuffers::FlatBufferBuilder builder(128);
         const auto p = DynamiteMessage::Vec3(pos->x, pos->y, pos->z);
         const auto state = dropped ? DynamiteMessage::BodyState_dropped : DynamiteMessage::BodyState_carried;
         const auto sv = DynamiteMessage::CreateBodyPosition(builder, objectID, &p, rotY, state);
-        const auto message = DynamiteMessage::CreateMessageWrapper(builder, packetNumber, DynamiteMessage::Message_BodyPosition, sv.Union());
+        const auto message = DynamiteMessage::CreateMessageWrapper(builder, pn, DynamiteMessage::Message_BodyPosition, sv.Union());
         builder.Finish(message);
         const auto res = SendRaw(&builder);
         if (dropped) {
@@ -1279,8 +1419,8 @@ namespace Dynamite {
             spdlog::info("{}, size={}, dump={}", __PRETTY_FUNCTION__, size, bytes);
         }
 
-        if ((size - sizeof(DYNAMITE_RAW_HEADER)) > sizeof(this->updateBuffer)) {
-            spdlog::error("{}, incoming packet is too big ({})", __PRETTY_FUNCTION__, size);
+        if (size <= (int32_t)sizeof(DYNAMITE_RAW_HEADER) || (size - sizeof(DYNAMITE_RAW_HEADER)) > sizeof(this->updateBuffer)) {
+            spdlog::error("{}, incoming packet has bad size ({})", __PRETTY_FUNCTION__, size);
             return false;
         }
 
@@ -1288,7 +1428,8 @@ namespace Dynamite {
         memset(this->updateBuffer, 0, sizeof(this->updateBuffer));
         memcpy(this->updateBuffer, (char *)buffer + sizeof(DYNAMITE_RAW_HEADER), buflen);
 
-        auto verifier = flatbuffers::Verifier((uint8_t *)this->updateBuffer, sizeof(this->updateBuffer));
+        // verify only the received bytes, the rest of the buffer is zero padding
+        auto verifier = flatbuffers::Verifier((uint8_t *)this->updateBuffer, buflen);
         auto ok = DynamiteMessage::VerifyMessageWrapperBuffer(verifier);
         if (!ok) {
             spdlog::error("{}, message wrapper verification failed", __PRETTY_FUNCTION__);
@@ -1297,7 +1438,7 @@ namespace Dynamite {
 
         auto wrapper = DynamiteMessage::GetMessageWrapper(this->updateBuffer);
         if (wrapper->packet_num() <= packetSeen) {
-            spdlog::info("{}, incoming packet {}, have {}, ignoring", __PRETTY_FUNCTION__, wrapper->packet_num(), packetSeen);
+            spdlog::info("{}, incoming packet {}, have {}, ignoring", __PRETTY_FUNCTION__, wrapper->packet_num(), packetSeen.load());
             return false;
         }
 

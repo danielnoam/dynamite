@@ -9,6 +9,8 @@
 #include "Tpp/BossQuietDamage.h"
 #include "Tpp/TppTypes.h"
 
+#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -71,15 +73,22 @@ namespace Dynamite {
         void SyncVar(const std::string &catName, const std::string &varName);
         void HandleSyncVar(const DynamiteMessage::MessageWrapper *w);
 
+        // true if [start, start + count) fits into an array of arraySize elements
+        static constexpr bool ArrayRangeValid(const uint64_t start, const uint64_t count, const uint64_t arraySize) {
+            return count <= arraySize && start <= arraySize - count;
+        }
+        // number of elements in a gvars/svars variable, 0 if the variable is unknown
+        static uint32_t GetVarArraySize(const std::string &catName, const std::string &varName);
+
         // todo replace with template?
-        static bool SyncBoolVar(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncInt32Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncUint32Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncInt16Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncUint16Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncInt8Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncUint8Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
-        static bool SyncFloatVar(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex);
+        static bool SyncBoolVar(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncInt32Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncUint32Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncInt16Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncUint16Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncInt8Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncUint8Var(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
+        static bool SyncFloatVar(const DynamiteMessage::SyncVar *m, void *vars, uint32_t varIndex, uint32_t arraySize);
 
         void SyncEnemyVars();
 
@@ -111,8 +120,8 @@ namespace Dynamite {
         void *steamUDPSocket = nullptr;
 
         char updateBuffer[1024];
-        uint32_t packetNumber = 0;
-        uint32_t packetSeen = 0;
+        std::atomic<uint32_t> packetNumber = 0;
+        std::atomic<uint32_t> packetSeen = 0;
         std::jthread syncThread;
         std::map<std::string, bool> syncStatus{};
 

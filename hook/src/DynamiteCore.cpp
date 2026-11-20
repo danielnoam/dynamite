@@ -230,22 +230,28 @@ namespace Dynamite {
 
         ScriptVarResult s{};
 
-        const auto handle = BlockHeapAlloc(8, 8, MEMTAG_TPP_SYSTEM2SCRIPT);
-        TppGmImplScriptSystemImplGetScriptDeclVarHandle(scriptSystemImpl, handle, catHash, hash);
+        // handle is read up to +0xC below, allocate the whole 16 bytes and zero them,
+        // so an unknown var reads as size 0 instead of heap garbage
+        const auto handle = BlockHeapAlloc(16, 8, MEMTAG_TPP_SYSTEM2SCRIPT);
         if (handle == nullptr) {
-            spdlog::error("{}, no handle for var {}.{}", __PRETTY_FUNCTION__, catName, varName);
+            spdlog::error("{}, alloc failed for var {}.{}", __PRETTY_FUNCTION__, catName, varName);
             return s;
         }
+
+        memset(handle, 0, 16);
+        TppGmImplScriptSystemImplGetScriptDeclVarHandle(scriptSystemImpl, handle, catHash, hash);
 
         auto varType = *(unsigned char *)((char *)handle + 0xC) & 7;
         if (varType > TYPE_MAX) {
             spdlog::error("{}, invalid var type {}.{} {}", __PRETTY_FUNCTION__, catName, varName, varType);
+            BlockHeapFree(handle);
             return s;
         }
 
         auto arraySize = *(unsigned short *)((char *)handle + 0x8);
         if (arraySize == 0) {
             spdlog::error("{}, invalid var size {}.{}: {}", __PRETTY_FUNCTION__, catName, varName, arraySize);
+            BlockHeapFree(handle);
             return s;
         }
 
@@ -367,8 +373,8 @@ namespace Dynamite {
             return;
         }
 
-        auto ecode = BlockHeapAlloc(8, 8, MEMTAG_TPP_GK_EMBLEM);
-        ecode = TppUiEmblemImplEmblemEditorSystemImplCreateEmblemParametersHook(emblemEditor,
+        // the result goes to errcode; the returned pointer is not ours to free (it used to be BlockHeapFree'd)
+        TppUiEmblemImplEmblemEditorSystemImplCreateEmblemParametersHook(emblemEditor,
             &errcode,
             params,
             info.emblemTextureTag,
@@ -384,13 +390,13 @@ namespace Dynamite {
         if (errcode != 0) {
             spdlog::error("{}, TppUiEmblemImplEmblemEditorSystemImplCreateEmblemParameters error code {}", __PRETTY_FUNCTION__, errcode);
             BlockHeapFree(params);
-            BlockHeapFree(ecode);
             return;
         }
 
         const auto ready = TppUiEmblemImplEmblemEditorSystemImplIsReady(emblemEditor);
         if (!ready) {
             spdlog::error("{}, emblem editor not ready", __PRETTY_FUNCTION__);
+            BlockHeapFree(params);
             return;
         }
 
@@ -403,7 +409,6 @@ namespace Dynamite {
         spdlog::info("{}, TppUiEmblemImplEmblemEditorSystemImplCreateEmblem res={}", __PRETTY_FUNCTION__, res);
 
         BlockHeapFree(params);
-        BlockHeapFree(ecode);
         TppUiEmblemImplEmblemEditorSystemImplUnloadEmblemTextureInfo(emblemEditor);
 
         emblemCreated = true;
@@ -442,39 +447,44 @@ namespace Dynamite {
             return;
         }
 
-        if (nearestPlayerThread.joinable()) {
-            spdlog::info("{}, nearest enemy thread already running", __FUNCTION__);
+        if (nearestEnemyEnabled) {
+            spdlog::info("{}, nearest enemy targeting already enabled", __FUNCTION__);
             return;
         }
 
-        nearestPlayerThread = std::jthread([this](const std::stop_token &stoken) {
-            spdlog::info("{}, starting", __PRETTY_FUNCTION__);
-            while (!stoken.stop_requested()) {
-                auto opID = GetNearestPlayer();
-                if (cfg->debug.playerTarget) {
-                    if (opID != offensePlayerID) {
-                        spdlog::info("changing offense player ID from {:d} to {:d}", offensePlayerID, opID);
-                    }
-                }
-                offensePlayerID = opID;
-
-                using namespace std::chrono_literals;
-                std::this_thread::sleep_for(500ms);
-            }
-
-            spdlog::info("{}, stopping", __PRETTY_FUNCTION__);
-        });
+        nextNearestEnemyUpdate = {};
+        nearestEnemyEnabled = true;
     }
 
     void DynamiteCore::StopNearestEnemyThread() {
         spdlog::info("{}", __PRETTY_FUNCTION__);
-        if (nearestPlayerThread.joinable()) {
-            nearestPlayerThread.request_stop();
-            nearestPlayerThread.join();
-        }
+        nearestEnemyEnabled = false;
     }
 
-    bool DynamiteCore::IsNearestEnemyThreadRunning() const { return nearestPlayerThread.joinable(); }
+    bool DynamiteCore::IsNearestEnemyThreadRunning() const { return nearestEnemyEnabled; }
+
+    void DynamiteCore::UpdateNearestEnemy() {
+        if (!nearestEnemyEnabled) {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now < nextNearestEnemyUpdate) {
+            return;
+        }
+
+        using namespace std::chrono_literals;
+        nextNearestEnemyUpdate = now + 500ms;
+
+        const unsigned int opID = GetNearestPlayer();
+        if (cfg->debug.playerTarget) {
+            if (opID != offensePlayerID) {
+                spdlog::info("changing offense player ID from {:d} to {:d}", offensePlayerID.load(), opID);
+            }
+        }
+
+        offensePlayerID = opID;
+    }
 
     unsigned int DynamiteCore::GetOffensePlayerID() const { return offensePlayerID; }
 
@@ -565,7 +575,7 @@ namespace Dynamite {
         }
 
         if (hookState.bossQuietImplActionController == nullptr) {
-            spdlog::error("{}, bossQuietImplActionController is nullptr");
+            spdlog::error("{}, bossQuietImplActionController is nullptr", __PRETTY_FUNCTION__);
             return;
         }
 

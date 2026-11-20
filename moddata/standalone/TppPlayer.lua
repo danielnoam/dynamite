@@ -2515,6 +2515,9 @@ end
 function e.Update()
 	e.UpdateDeliveryWarp()
 	e.DynamiteUpdateBodySync()
+	if Dynamite ~= nil and Dynamite.UpdateNearestEnemy ~= nil then
+		Dynamite.UpdateNearestEnemy()
+	end
 end
 
 -- dynamite: body sync
